@@ -1,0 +1,78 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  STUDENT
+  INSTITUTION
+  EMPLOYER
+}
+
+enum CertificateType {
+  DEGREE
+  DIPLOMA
+  CERTIFICATE
+  COURSE
+  AWARD
+}
+
+model User {
+  id            String        @id @default(uuid())
+  walletAddress String        @unique
+  email         String?       @unique
+  name          String?
+  role          UserRole
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  institutionId String?
+  
+  // Relations
+  issuedCertificates     Certificate[] @relation("Issuer")
+  receivedCertificates   Certificate[] @relation("Recipient")
+  institution           Institution?   @relation("InstitutionAdmin", fields: [institutionId], references: [id])
+
+  @@index([institutionId])
+}
+
+model Institution {
+  id          String        @id @default(uuid())
+  name        String
+  website     String?
+  verified    Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  administrators User[]         @relation("InstitutionAdmin")
+  certificates   Certificate[]
+}
+
+model Certificate {
+  id          String          @id @default(uuid())
+  title       String
+  type        CertificateType
+  mintAddress String          @unique
+  metadata    Json?
+  issueDate   DateTime        @default(now())
+  expiryDate  DateTime?
+  revoked     Boolean         @default(false)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  // Relations
+  recipient     User         @relation("Recipient", fields: [recipientId], references: [id])
+  recipientId   String
+  issuer        User         @relation("Issuer", fields: [issuerId], references: [id])
+  issuerId      String
+  institution   Institution  @relation(fields: [institutionId], references: [id])
+  institutionId String
+
+  @@index([recipientId])
+  @@index([issuerId])
+  @@index([institutionId])
+}
