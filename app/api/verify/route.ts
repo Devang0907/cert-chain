@@ -14,8 +14,8 @@ export async function GET(request: Request) {
     const certificate = await prisma.certificate.findFirst({
       where: {
         OR: [
-          { id: certificateId },
-          { mintAddress },
+          { id: certificateId! },
+          { mintAddress: mintAddress! },
         ],
       },
       include: {

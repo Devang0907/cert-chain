@@ -42,6 +42,7 @@ export async function POST(request: Request) {
         name,
         email,
         // In a real app, you would store notification preferences in a separate table
+        notifications: notifications
       },
     });
 

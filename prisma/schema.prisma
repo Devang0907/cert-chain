@@ -35,6 +35,9 @@ model User {
   issuedCertificates     Certificate[] @relation("Issuer")
   receivedCertificates   Certificate[] @relation("Recipient")
   institution           Institution?   @relation("InstitutionAdmin", fields: [institutionId], references: [id])
+  notifications         Notification[]
+  shares               Share[]
+  settings             Settings?
 
   @@index([institutionId])
 }
@@ -71,8 +74,66 @@ model Certificate {
   issuerId      String
   institution   Institution  @relation(fields: [institutionId], references: [id])
   institutionId String
+  shares        Share[]
 
   @@index([recipientId])
   @@index([issuerId])
   @@index([institutionId])
+}
+
+model Share {
+  id            String      @id @default(uuid())
+  userId        String
+  certificateId String
+  token         String      @unique
+  email         String?
+  expiryDate    DateTime?
+  includePrivate Boolean    @default(false)
+  createdAt     DateTime    @default(now())
+  accessedAt    DateTime?
+
+  // Relations
+  user        User        @relation(fields: [userId], references: [id])
+  certificate Certificate @relation(fields: [certificateId], references: [id])
+
+  @@index([userId])
+  @@index([certificateId])
+  @@index([token])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String
+  data      Json
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  // Relations
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Settings {
+  id                    String   @id @default(uuid())
+  userId               String   @unique
+  emailNotifications   Boolean  @default(true)
+  browserNotifications Boolean  @default(true)
+  twoFactorEnabled     Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id])
+}
+
+model Analytics {
+  id        String   @id @default(uuid())
+  eventName String
+  eventData Json
+  timestamp DateTime @default(now())
+
+  @@index([eventName])
+  @@index([timestamp])
 }

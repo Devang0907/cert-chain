@@ -11,8 +11,10 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
+    "@metaplex-foundation/mpl-token-metadata": "^3.2.0",
     "@next/swc-wasm-nodejs": "13.5.1",
     "@prisma/client": "^6.9.0",
+    "@project-serum/anchor": "^0.26.0",
     "@radix-ui/react-accordion": "^1.2.0",
     "@radix-ui/react-alert-dialog": "^1.1.1",
     "@radix-ui/react-aspect-ratio": "^1.1.0",
