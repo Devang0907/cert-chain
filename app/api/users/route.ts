@@ -10,31 +10,43 @@ export async function POST(request: Request) {
 
     // Validate input
     if (!walletAddress || !role) {
-      return NextResponse.json({ error: 'Wallet address and role are required' }, { status: 400 });
+      return NextResponse.json(
+        { error: "Wallet address and role are required" },
+        { status: 400 }
+      );
     }
 
     // Validate wallet address
     try {
       new PublicKey(walletAddress);
     } catch (error) {
-      return NextResponse.json({ error: 'Invalid wallet address' }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid wallet address" },
+        { status: 400 }
+      );
     }
 
     // Validate role
     if (!Object.values(UserRole).includes(role)) {
-      return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
+      return NextResponse.json({ error: "Invalid role" }, { status: 400 });
     }
 
     // If role is INSTITUTION, validate institutionId
     if (role === UserRole.INSTITUTION && !institutionId) {
-      return NextResponse.json({ error: 'Institution ID is required for institution role' }, { status: 400 });
+      return NextResponse.json(
+        { error: "Institution ID is required for institution role" },
+        { status: 400 }
+      );
     }
 
     // Check if email is unique if provided
     if (email) {
       const existingUser = await prisma.user.findUnique({ where: { email } });
       if (existingUser && existingUser.walletAddress !== walletAddress) {
-        return NextResponse.json({ error: 'Email already in use' }, { status: 400 });
+        return NextResponse.json(
+          { error: "Email already in use" },
+          { status: 400 }
+        );
       }
     }
 
@@ -63,13 +75,19 @@ export async function POST(request: Request) {
 
       // If institution role, ensure institution exists
       if (role === UserRole.INSTITUTION && institutionId) {
+        const institution = await tx.institution.findUnique({
+          where: { id: institutionId },
+        });
+        if (!institution) {
+          throw new Error("Institution not found");
+        }
         await tx.institution.update({
           where: { id: institutionId },
           data: {
             administrators: {
-              connect: { id: user.id }
-            }
-          }
+              connect: { id: user.id },
+            },
+          },
         });
       }
 
@@ -77,9 +95,15 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(user);
-  } catch (error) {
-    console.error('Error creating/updating user:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  } catch (error: any) {
+    console.error("Error creating/updating user:", error);
+    if (error.message === "Institution not found") {
+      return NextResponse.json(
+        { error: "Invalid Institution ID" },
+        { status: 400 }
+      );
+    }
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 

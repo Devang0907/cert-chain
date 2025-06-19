@@ -57,7 +57,7 @@ export function CertificatesList() {
         const response = await fetch(`/api/certificates?wallet=${publicKey.toString()}`);
         if (!response.ok) throw new Error('Failed to fetch certificates');
         const data = await response.json();
-        setCertificates(data);
+        setCertificates(data.certificates);
       } catch (error) {
         console.error('Error fetching certificates:', error);
         toast.error('Failed to load certificates');

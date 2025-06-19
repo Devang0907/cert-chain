@@ -1,6 +1,6 @@
 import { DashboardOverview } from "@/components/dashboard/overview";
 import { CertificatesList } from "@/components/dashboard/certificates-list";
-import { RecentActivity } from "@/components/dashboard/recent-activity";
+// import { RecentActivity } from "@/components/dashboard/recent-activity";
 import { RoleCheck } from "@/components/dashboard/role-check";
 
 export default function DashboardPage() {
@@ -15,11 +15,8 @@ export default function DashboardPage() {
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="md:col-span-2">
+        <div className="md:col-span-3">
           <CertificatesList />
-        </div>
-        <div>
-          <RecentActivity />
         </div>
       </div>
     </div>

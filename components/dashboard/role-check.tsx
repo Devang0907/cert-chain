@@ -12,19 +12,32 @@ import {
 import { Button } from "@/components/ui/button";
 import { AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export function RoleCheck() {
   const { connected, publicKey } = useWallet();
   const [hasRole, setHasRole] = useState(false);
   const [loading, setLoading] = useState(true);
-  
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [institutionId, setInstitutionId] = useState("");
+
   useEffect(() => {
     const checkRole = async () => {
       if (!connected || !publicKey) {
         setLoading(false);
         return;
       }
-      
+
       try {
         const response = await fetch(`/api/users?wallet=${publicKey.toString()}`);
         const data = await response.json();
@@ -36,39 +49,53 @@ export function RoleCheck() {
         setLoading(false);
       }
     };
-    
+
     checkRole();
   }, [connected, publicKey]);
 
-  const handleRoleSelection = async (role: string) => {
-    if (!connected || !publicKey) return;
+  const handleRoleSelection = async (role: string, institutionId?: string) => {
+    if (!connected || !publicKey) {
+      toast.error("Please connect your wallet");
+      return;
+    }
 
     try {
-      const response = await fetch('/api/users', {
-        method: 'POST',
+      const body: any = {
+        walletAddress: publicKey.toString(),
+        role,
+      };
+
+      // Include institutionId for INSTITUTION role
+      if (role === "INSTITUTION" && institutionId) {
+        body.institutionId = institutionId;
+      }
+
+      const response = await fetch("/api/users", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          walletAddress: publicKey.toString(),
-          role,
-        }),
+        body: JSON.stringify(body),
       });
 
-      if (!response.ok) throw new Error('Failed to set role');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to set role");
+      }
 
       setHasRole(true);
-      toast.success('Role updated successfully');
-    } catch (error) {
-      console.error('Error setting role:', error);
-      toast.error('Failed to update role');
+      setIsDialogOpen(false); // Close dialog after success
+      toast.success("Role updated successfully");
+    } catch (error: any) {
+      console.error("Error setting role:", error);
+      toast.error(error.message || "Failed to update role");
     }
   };
-  
+
   if (!connected || loading || hasRole) {
     return null;
   }
-  
+
   return (
     <Card className="border-orange-300 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-800">
       <CardHeader>
@@ -82,16 +109,56 @@ export function RoleCheck() {
       </CardHeader>
       <CardContent>
         <p className="text-sm mb-4">
-          Are you an educational institution issuing certificates, a student receiving certificates, or an employer verifying certificates?
+          Are you an educational institution issuing certificates, a student
+          receiving certificates, or an employer verifying certificates?
         </p>
         <div className="flex flex-wrap gap-3">
-          <Button variant="outline" onClick={() => handleRoleSelection('INSTITUTION')}>
-            I'm an Institution
-          </Button>
-          <Button variant="outline" onClick={() => handleRoleSelection('STUDENT')}>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">I'm an Institution</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Enter Institution ID</DialogTitle>
+                <DialogDescription>
+                  Please provide your Institution ID to register as an
+                  institution.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="institutionId" className="text-right">
+                    Institution ID
+                  </Label>
+                  <Input
+                    id="institutionId"
+                    value={institutionId}
+                    onChange={(e) => setInstitutionId(e.target.value)}
+                    className="col-span-3"
+                    placeholder="Enter your institution ID"
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  onClick={() => handleRoleSelection("INSTITUTION", institutionId)}
+                  disabled={!institutionId.trim()}
+                >
+                  Submit
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <Button
+            variant="outline"
+            onClick={() => handleRoleSelection("STUDENT")}
+          >
             I'm a Student
           </Button>
-          <Button variant="outline" onClick={() => handleRoleSelection('EMPLOYER')}>
+          <Button
+            variant="outline"
+            onClick={() => handleRoleSelection("EMPLOYER")}
+          >
             I'm an Employer
           </Button>
         </div>

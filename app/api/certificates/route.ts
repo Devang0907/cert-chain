@@ -10,17 +10,19 @@ import {
   sendAndConfirmTransaction,
   LAMPORTS_PER_SOL
 } from '@solana/web3.js';
-import { createCreateMetadataAccountV3Instruction } from '@metaplex-foundation/mpl-token-metadata';
-import * as anchor from '@project-serum/anchor';
+import { Metaplex, keypairIdentity } from '@metaplex-foundation/js';
 import Arweave from 'arweave';
 
 // Initialize connections
-const connection = new Connection(process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com');
+const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com');
 const arweave = new Arweave({
   host: 'arweave.net',
   port: 443,
   protocol: 'https'
 });
+
+// Initialize Metaplex
+const metaplex = Metaplex.make(connection);
 
 // Analytics tracking function
 async function trackAnalytics(eventName: string, data: any) {
@@ -203,7 +205,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Issuer must be an institution' }, { status: 403 });
     }
 
-    // Check if institution matches
     if (issuer.institution.id !== institutionId) {
       return NextResponse.json({ error: 'Issuer does not belong to specified institution' }, { status: 403 });
     }
@@ -234,37 +235,36 @@ export async function POST(request: Request) {
     const mintAuthority = new PublicKey(issuerWallet);
     const recipientPublicKey = new PublicKey(recipientWallet);
 
+    // Set up Metaplex with issuer's keypair (assuming issuer signs the transaction)
+    const issuerKeypair = Keypair.fromSecretKey(new Uint8Array(JSON.parse(process.env.ISSUER_SECRET_KEY || '[]'))); // Load securely
+    metaplex.use(keypairIdentity(issuerKeypair));
+
+    // Create mint account
     const createMintTx = new Transaction().add(
       SystemProgram.createAccount({
         fromPubkey: mintAuthority,
         newAccountPubkey: mintKeypair.publicKey,
-        space: 82,
+        space: 82, // Size for mint account
         lamports: await connection.getMinimumBalanceForRentExemption(82),
         programId: SystemProgram.programId
-      }),
-      createCreateMetadataAccountV3Instruction({
-        metadata: mintKeypair.publicKey,
-        mint: mintKeypair.publicKey,
-        mintAuthority: mintAuthority,
-        payer: mintAuthority,
-        updateAuthority: mintAuthority,
-        data: {
-          name: title,
-          symbol: 'CERT',
-          uri: metadataUri,
-          sellerFeeBasisPoints: 0,
-          creators: null,
-          collection: null,
-          uses: null
-        }
       })
     );
 
-    const mintTxId = await sendAndConfirmTransaction(
-      connection,
-      createMintTx,
-      [mintKeypair]
-    );
+    // Create NFT using Metaplex (handles transaction internally)
+    const nftResult = await metaplex.nfts().create({
+      uri: metadataUri,
+      name: title,
+      symbol: 'CERT',
+      sellerFeeBasisPoints: 0,
+      mintAuthority: issuerKeypair,
+      updateAuthority: issuerKeypair,
+      isMutable: true, // Set to false if the metadata should be immutable
+      creators: undefined,
+      collection: null,
+    });
+
+    // Get the transaction signature from the response
+    const mintTxId = nftResult.response.signature;
 
     // Create certificate with transaction
     const certificate = await prisma.$transaction(async (tx) => {
@@ -282,7 +282,7 @@ export async function POST(request: Request) {
           expiryDate: expiryDate ? new Date(expiryDate) : null,
           recipientId: recipient.id,
           issuerId: issuer.id,
-          institutionId: issuer.institution.id,
+          institutionId: issuer.institution!.id,
         },
         include: {
           institution: true,
