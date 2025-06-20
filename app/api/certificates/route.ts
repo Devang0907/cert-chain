@@ -10,19 +10,9 @@ import {
   sendAndConfirmTransaction,
   LAMPORTS_PER_SOL
 } from '@solana/web3.js';
-import { Metaplex, keypairIdentity } from '@metaplex-foundation/js';
-import Arweave from 'arweave';
 
 // Initialize connections
 const connection = new Connection(process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com');
-const arweave = new Arweave({
-  host: 'arweave.net',
-  port: 443,
-  protocol: 'https'
-});
-
-// Initialize Metaplex
-const metaplex = Metaplex.make(connection);
 
 // Analytics tracking function
 async function trackAnalytics(eventName: string, data: any) {
@@ -46,19 +36,6 @@ async function sendNotifications(recipientId: string, eventType: string, data: a
       where: { id: recipientId },
       select: { email: true }
     });
-
-    if (recipient?.email) {
-      // Send email notification
-      await fetch(process.env.EMAIL_API_URL!, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: recipient.email,
-          template: 'certificate_issued',
-          data
-        })
-      });
-    }
 
     // Store notification in database
     await prisma.notification.create({
@@ -209,62 +186,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Issuer does not belong to specified institution' }, { status: 403 });
     }
 
-    // 1. Upload metadata to Arweave
-    const metadataTransaction = await arweave.createTransaction({
-      data: JSON.stringify({
-        name: title,
-        description: metadata.description,
-        image: metadata.image,
-        attributes: metadata.attributes,
-        properties: {
-          type,
-          issuer: issuer.institution.name,
-          recipient: recipient.name,
-          issueDate: new Date().toISOString(),
-          expiryDate: expiryDate || null
-        }
-      })
-    });
-
-    await arweave.transactions.sign(metadataTransaction);
-    await arweave.transactions.post(metadataTransaction);
-    const metadataUri = `https://arweave.net/${metadataTransaction.id}`;
-
-    // 2. Mint NFT on Solana
+    // Generate a mock mint address for demo purposes
+    // In a real implementation, you would mint an actual NFT on Solana
     const mintKeypair = Keypair.generate();
-    const mintAuthority = new PublicKey(issuerWallet);
-    const recipientPublicKey = new PublicKey(recipientWallet);
-
-    // Set up Metaplex with issuer's keypair (assuming issuer signs the transaction)
-    const issuerKeypair = Keypair.fromSecretKey(new Uint8Array(JSON.parse(process.env.ISSUER_SECRET_KEY || '[]'))); // Load securely
-    metaplex.use(keypairIdentity(issuerKeypair));
-
-    // Create mint account
-    const createMintTx = new Transaction().add(
-      SystemProgram.createAccount({
-        fromPubkey: mintAuthority,
-        newAccountPubkey: mintKeypair.publicKey,
-        space: 82, // Size for mint account
-        lamports: await connection.getMinimumBalanceForRentExemption(82),
-        programId: SystemProgram.programId
-      })
-    );
-
-    // Create NFT using Metaplex (handles transaction internally)
-    const nftResult = await metaplex.nfts().create({
-      uri: metadataUri,
-      name: title,
-      symbol: 'CERT',
-      sellerFeeBasisPoints: 0,
-      mintAuthority: issuerKeypair,
-      updateAuthority: issuerKeypair,
-      isMutable: true, // Set to false if the metadata should be immutable
-      creators: undefined,
-      collection: null,
-    });
-
-    // Get the transaction signature from the response
-    const mintTxId = nftResult.response.signature;
+    const mintAddress = mintKeypair.publicKey.toString();
 
     // Create certificate with transaction
     const certificate = await prisma.$transaction(async (tx) => {
@@ -275,10 +200,9 @@ export async function POST(request: Request) {
           type,
           metadata: {
             ...metadata,
-            arweaveUri: metadataUri,
-            solanaTransaction: mintTxId
+            solanaTransaction: `mock_tx_${Date.now()}` // Mock transaction ID
           },
-          mintAddress: mintKeypair.publicKey.toString(),
+          mintAddress,
           expiryDate: expiryDate ? new Date(expiryDate) : null,
           recipientId: recipient.id,
           issuerId: issuer.id,
@@ -291,33 +215,17 @@ export async function POST(request: Request) {
         },
       });
 
-      // Update recipient and issuer certificate counts
-      await Promise.all([
-        tx.user.update({
-          where: { id: recipient.id },
-          data: { 
-            receivedCertificates: { connect: { id: cert.id } }
-          }
-        }),
-        tx.user.update({
-          where: { id: issuer.id },
-          data: { 
-            issuedCertificates: { connect: { id: cert.id } }
-          }
-        })
-      ]);
-
       return cert;
     });
 
-    // 3. Send notifications
+    // Send notifications
     await sendNotifications(recipient.id, 'CERTIFICATE_ISSUED', {
       certificateId: certificate.id,
       title: certificate.title,
       issuer: issuer.institution.name
     });
 
-    // 4. Track analytics
+    // Track analytics
     await trackAnalytics('certificate_issued', {
       certificateId: certificate.id,
       issuerId: issuer.id,

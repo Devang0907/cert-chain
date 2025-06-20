@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useWallet } from "@solana/wallet-adapter-react";
 import {
   Card,
   CardContent,
@@ -39,6 +40,7 @@ import { ArrowRight, Plus } from "lucide-react";
 // Form schema using zod
 const formSchema = z.object({
   recipientName: z.string().min(1, "Recipient name is required"),
+  recipientEmail: z.string().email("Valid email is required"),
   recipientWallet: z.string().min(1, "Recipient wallet address is required"),
   certificateTitle: z.string().min(1, "Certificate title is required"),
   certificateType: z.string().min(1, "Certificate type is required"),
@@ -59,13 +61,17 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>;
 
 export default function IssueCertificatePage() {
+  const { connected, publicKey } = useWallet();
   const [additionalFields, setAdditionalFields] = useState<Array<{ key: string; value: string; isEncrypted: boolean }>>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [institutionData, setInstitutionData] = useState<any>(null);
   
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       recipientName: "",
+      recipientEmail: "",
       recipientWallet: "",
       certificateTitle: "",
       certificateType: "",
@@ -73,29 +79,108 @@ export default function IssueCertificatePage() {
       additionalFields: [],
     },
   });
+
+  // Check user role and institution data
+  useEffect(() => {
+    const checkUserRole = async () => {
+      if (!connected || !publicKey) return;
+
+      try {
+        const response = await fetch(`/api/users?wallet=${publicKey.toString()}`);
+        if (response.ok) {
+          const userData = await response.json();
+          if (userData) {
+            setUserRole(userData.role);
+            setInstitutionData(userData.institution);
+          }
+        }
+      } catch (error) {
+        console.error("Error checking user role:", error);
+      }
+    };
+
+    checkUserRole();
+  }, [connected, publicKey]);
   
   const onSubmit = async (values: FormValues) => {
+    if (!connected || !publicKey) {
+      toast.error("Please connect your wallet");
+      return;
+    }
+
+    if (userRole !== "INSTITUTION") {
+      toast.error("Only institutions can issue certificates");
+      return;
+    }
+
+    if (!institutionData) {
+      toast.error("Institution data not found");
+      return;
+    }
+
     setIsSubmitting(true);
     
-    // Prepare complete form data with additional fields
-    const completeData = {
-      ...values,
-      additionalFields,
-    };
-    
-    console.log("Submitting certificate data:", completeData);
-    
-    // Simulate API call to mint NFT
     try {
-      // In a real app, this would call a function to mint the NFT on Solana
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // First, create or get the recipient user
+      const recipientResponse = await fetch("/api/recipients", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          walletAddress: values.recipientWallet,
+          email: values.recipientEmail,
+          name: values.recipientName,
+        }),
+      });
+
+      if (!recipientResponse.ok) {
+        throw new Error("Failed to create/update recipient");
+      }
+
+      // Prepare certificate data
+      const certificateData = {
+        title: values.certificateTitle,
+        type: values.certificateType.toUpperCase(),
+        recipientWallet: values.recipientWallet,
+        issuerWallet: publicKey.toString(),
+        institutionId: institutionData.id,
+        metadata: {
+          description: values.description || "",
+          image: "", // You can add image upload functionality later
+          attributes: additionalFields.map(field => ({
+            trait_type: field.key,
+            value: field.value,
+            encrypted: field.isEncrypted
+          })),
+          issueDate: values.issueDate.toISOString(),
+          ...(values.expiryDate && { expiryDate: values.expiryDate.toISOString() })
+        },
+        expiryDate: values.expiryDate?.toISOString(),
+      };
+
+      // Issue the certificate
+      const certificateResponse = await fetch("/api/certificates", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(certificateData),
+      });
+
+      if (!certificateResponse.ok) {
+        const errorData = await certificateResponse.json();
+        throw new Error(errorData.error || "Failed to issue certificate");
+      }
+
+      const certificate = await certificateResponse.json();
       
       toast.success("Certificate issued successfully!");
       form.reset();
       setAdditionalFields([]);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error issuing certificate:", error);
-      toast.error("Failed to issue certificate. Please try again.");
+      toast.error(error.message || "Failed to issue certificate. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -117,6 +202,33 @@ export default function IssueCertificatePage() {
   const removeField = (index: number) => {
     setAdditionalFields(additionalFields.filter((_, i) => i !== index));
   };
+
+  if (!connected) {
+    return (
+      <div className="text-center py-12">
+        <h1 className="text-3xl font-bold mb-4">Issue Certificate</h1>
+        <p className="text-muted-foreground">Please connect your wallet to issue certificates.</p>
+      </div>
+    );
+  }
+
+  if (userRole && userRole !== "INSTITUTION") {
+    return (
+      <div className="text-center py-12">
+        <h1 className="text-3xl font-bold mb-4">Access Denied</h1>
+        <p className="text-muted-foreground">Only institutions can issue certificates.</p>
+      </div>
+    );
+  }
+
+  if (!institutionData) {
+    return (
+      <div className="text-center py-12">
+        <h1 className="text-3xl font-bold mb-4">Institution Not Found</h1>
+        <p className="text-muted-foreground">You must be associated with an institution to issue certificates.</p>
+      </div>
+    );
+  }
   
   return (
     <div>
@@ -126,7 +238,7 @@ export default function IssueCertificatePage() {
         <CardHeader>
           <CardTitle>Create New Certificate</CardTitle>
           <CardDescription>
-            Issue a blockchain-verified certificate to a student or recipient.
+            Issue a blockchain-verified certificate from {institutionData.name}.
           </CardDescription>
         </CardHeader>
         
@@ -153,18 +265,32 @@ export default function IssueCertificatePage() {
                   
                   <FormField
                     control={form.control}
-                    name="recipientWallet"
+                    name="recipientEmail"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Recipient Wallet Address</FormLabel>
+                        <FormLabel>Recipient Email</FormLabel>
                         <FormControl>
-                          <Input placeholder="Solana wallet address" {...field} />
+                          <Input placeholder="jane@example.com" type="email" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
                 </div>
+
+                <FormField
+                  control={form.control}
+                  name="recipientWallet"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Recipient Wallet Address</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Solana wallet address" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
               
               <Separator />

@@ -30,6 +30,8 @@ export function RoleCheck() {
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [institutionId, setInstitutionId] = useState("");
+  const [institutionName, setInstitutionName] = useState("");
+  const [institutionWebsite, setInstitutionWebsite] = useState("");
 
   useEffect(() => {
     const checkRole = async () => {
@@ -53,7 +55,7 @@ export function RoleCheck() {
     checkRole();
   }, [connected, publicKey]);
 
-  const handleRoleSelection = async (role: string, institutionId?: string) => {
+  const handleRoleSelection = async (role: string) => {
     if (!connected || !publicKey) {
       toast.error("Please connect your wallet");
       return;
@@ -65,9 +67,34 @@ export function RoleCheck() {
         role,
       };
 
-      // Include institutionId for INSTITUTION role
-      if (role === "INSTITUTION" && institutionId) {
-        body.institutionId = institutionId;
+      // For institution role, we need to create the institution first
+      if (role === "INSTITUTION") {
+        if (!institutionName.trim()) {
+          toast.error("Institution name is required");
+          return;
+        }
+
+        // Create institution first
+        const institutionResponse = await fetch("/api/institutions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name: institutionName,
+            website: institutionWebsite || undefined,
+            adminWalletAddress: publicKey.toString(),
+          }),
+        });
+
+        if (!institutionResponse.ok) {
+          const errorData = await institutionResponse.json();
+          throw new Error(errorData.error || "Failed to create institution");
+        }
+
+        const institution = await institutionResponse.json();
+        body.institutionId = institution.id;
+        body.name = institutionName;
       }
 
       const response = await fetch("/api/users", {
@@ -84,8 +111,11 @@ export function RoleCheck() {
       }
 
       setHasRole(true);
-      setIsDialogOpen(false); // Close dialog after success
-      toast.success("Role updated successfully");
+      setIsDialogOpen(false);
+      setInstitutionId("");
+      setInstitutionName("");
+      setInstitutionWebsite("");
+      toast.success("Profile created successfully!");
     } catch (error: any) {
       console.error("Error setting role:", error);
       toast.error(error.message || "Failed to update role");
@@ -119,32 +149,43 @@ export function RoleCheck() {
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Enter Institution ID</DialogTitle>
+                <DialogTitle>Register Institution</DialogTitle>
                 <DialogDescription>
-                  Please provide your Institution ID to register as an
-                  institution.
+                  Please provide your institution details to register.
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
                 <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="institutionId" className="text-right">
-                    Institution ID
+                  <Label htmlFor="institutionName" className="text-right">
+                    Institution Name *
                   </Label>
                   <Input
-                    id="institutionId"
-                    value={institutionId}
-                    onChange={(e) => setInstitutionId(e.target.value)}
+                    id="institutionName"
+                    value={institutionName}
+                    onChange={(e) => setInstitutionName(e.target.value)}
                     className="col-span-3"
-                    placeholder="Enter your institution ID"
+                    placeholder="e.g., Stanford University"
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="institutionWebsite" className="text-right">
+                    Website
+                  </Label>
+                  <Input
+                    id="institutionWebsite"
+                    value={institutionWebsite}
+                    onChange={(e) => setInstitutionWebsite(e.target.value)}
+                    className="col-span-3"
+                    placeholder="e.g., stanford.edu"
                   />
                 </div>
               </div>
               <DialogFooter>
                 <Button
-                  onClick={() => handleRoleSelection("INSTITUTION", institutionId)}
-                  disabled={!institutionId.trim()}
+                  onClick={() => handleRoleSelection("INSTITUTION")}
+                  disabled={!institutionName.trim()}
                 >
-                  Submit
+                  Register Institution
                 </Button>
               </DialogFooter>
             </DialogContent>

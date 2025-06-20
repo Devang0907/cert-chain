@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useWallet } from "@solana/wallet-adapter-react";
 import { 
   GraduationCap, 
   LayoutDashboard, 
@@ -12,48 +13,103 @@ import {
   Users, 
   Settings,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Plus
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
-const navItems = [
-  {
-    title: "Dashboard",
-    href: "/dashboard",
-    icon: <LayoutDashboard className="h-5 w-5" />,
-  },
-  {
-    title: "My Certificates",
-    href: "/dashboard/certificates",
-    icon: <Award className="h-5 w-5" />,
-  },
-  {
-    title: "Share",
-    href: "/dashboard/share",
-    icon: <Share2 className="h-5 w-5" />,
-  },
-  {
-    title: "Institutions",
-    href: "/dashboard/institutions",
-    icon: <Building2 className="h-5 w-5" />,
-  },
-  {
-    title: "Recipients",
-    href: "/dashboard/recipients",
-    icon: <Users className="h-5 w-5" />,
-    institution: true,
-  },
-  {
-    title: "Settings",
-    href: "/dashboard/settings",
-    icon: <Settings className="h-5 w-5" />,
-  },
-];
-
 export function DashboardSidebar() {
   const pathname = usePathname();
+  const { connected, publicKey } = useWallet();
   const [collapsed, setCollapsed] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      if (!connected || !publicKey) return;
+
+      try {
+        const response = await fetch(`/api/users?wallet=${publicKey.toString()}`);
+        if (response.ok) {
+          const userData = await response.json();
+          if (userData) {
+            setUserRole(userData.role);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching user role:', error);
+      }
+    };
+
+    fetchUserRole();
+  }, [connected, publicKey]);
+
+  const getNavItems = () => {
+    const baseItems = [
+      {
+        title: "Dashboard",
+        href: "/dashboard",
+        icon: <LayoutDashboard className="h-5 w-5" />,
+      },
+      {
+        title: "My Certificates",
+        href: "/dashboard/certificates",
+        icon: <Award className="h-5 w-5" />,
+      },
+    ];
+
+    if (userRole === 'STUDENT') {
+      return [
+        ...baseItems,
+        {
+          title: "Share",
+          href: "/dashboard/share",
+          icon: <Share2 className="h-5 w-5" />,
+        },
+        {
+          title: "Institutions",
+          href: "/dashboard/institutions",
+          icon: <Building2 className="h-5 w-5" />,
+        },
+        {
+          title: "Settings",
+          href: "/dashboard/settings",
+          icon: <Settings className="h-5 w-5" />,
+        },
+      ];
+    } else if (userRole === 'INSTITUTION') {
+      return [
+        ...baseItems,
+        {
+          title: "Issue Certificate",
+          href: "/dashboard/issue",
+          icon: <Plus className="h-5 w-5" />,
+        },
+        {
+          title: "Recipients",
+          href: "/dashboard/recipients",
+          icon: <Users className="h-5 w-5" />,
+        },
+        {
+          title: "Settings",
+          href: "/dashboard/settings",
+          icon: <Settings className="h-5 w-5" />,
+        },
+      ];
+    } else {
+      return [
+        ...baseItems,
+        {
+          title: "Settings",
+          href: "/dashboard/settings",
+          icon: <Settings className="h-5 w-5" />,
+        },
+      ];
+    }
+  };
+
+  const navItems = getNavItems();
   
   return (
     <aside className={cn(
