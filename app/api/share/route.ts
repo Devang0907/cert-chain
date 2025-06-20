@@ -83,7 +83,7 @@ export async function POST(request: Request) {
         token,
         email,
         expiryDate,
-        includePrivate,
+        includePrivate: includePrivate || false,
       },
       include: {
         certificate: {
@@ -102,9 +102,6 @@ export async function POST(request: Request) {
 
     // If email is provided, send share notification
     if (email) {
-      // In a real app, integrate with your email service
-      // await sendShareEmail(email, share);
-      
       // Create notification for recipient
       await prisma.notification.create({
         data: {
@@ -121,7 +118,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ...share,
-      shareUrl: `${process.env.NEXT_PUBLIC_APP_URL}/verify/${share.token}`,
+      shareUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/verify/${share.token}`,
     });
   } catch (error) {
     console.error('Error creating share:', error);

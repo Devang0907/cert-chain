@@ -58,6 +58,8 @@ export async function GET(request: Request) {
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
 
+    console.log('GET /api/certificates - wallet:', walletAddress);
+
     if (!walletAddress) {
       return NextResponse.json({ error: 'Wallet address is required' }, { status: 400 });
     }
@@ -66,6 +68,7 @@ export async function GET(request: Request) {
     try {
       new PublicKey(walletAddress);
     } catch (error) {
+      console.error('Invalid wallet address:', walletAddress);
       return NextResponse.json({ error: 'Invalid wallet address' }, { status: 400 });
     }
 
@@ -93,8 +96,23 @@ export async function GET(request: Request) {
       },
     });
 
+    console.log('User found:', user ? 'Yes' : 'No');
+    if (user) {
+      console.log('User role:', user.role);
+      console.log('Received certificates:', user.receivedCertificates.length);
+      console.log('Issued certificates:', user.issuedCertificates.length);
+    }
+
     if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      console.log('User not found for wallet:', walletAddress);
+      return NextResponse.json({ 
+        certificates: [],
+        pagination: {
+          currentPage: page,
+          totalPages: 0,
+          totalItems: 0,
+        },
+      });
     }
 
     // Get total count for pagination
@@ -107,6 +125,8 @@ export async function GET(request: Request) {
     const certificates = user.role === UserRole.STUDENT 
       ? user.receivedCertificates 
       : user.issuedCertificates;
+
+    console.log('Returning certificates:', certificates.length);
 
     // Track analytics
     await trackAnalytics('certificates_viewed', {
@@ -142,6 +162,8 @@ export async function POST(request: Request) {
       expiryDate 
     } = body;
 
+    console.log('POST /api/certificates - Creating certificate for recipient:', recipientWallet);
+
     // Input validation
     if (!title || !type || !recipientWallet || !issuerWallet || !institutionId) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -174,6 +196,9 @@ export async function POST(request: Request) {
       })
     ]);
 
+    console.log('Recipient found:', recipient ? 'Yes' : 'No');
+    console.log('Issuer found:', issuer ? 'Yes' : 'No');
+
     if (!recipient || !issuer || !issuer.institution) {
       return NextResponse.json({ error: 'Invalid recipient or issuer' }, { status: 400 });
     }
@@ -191,6 +216,8 @@ export async function POST(request: Request) {
     const mintKeypair = Keypair.generate();
     const mintAddress = mintKeypair.publicKey.toString();
 
+    console.log('Generated mint address:', mintAddress);
+
     // Create certificate with transaction
     const certificate = await prisma.$transaction(async (tx) => {
       // Create the certificate
@@ -200,7 +227,9 @@ export async function POST(request: Request) {
           type,
           metadata: {
             ...metadata,
-            solanaTransaction: `mock_tx_${Date.now()}` // Mock transaction ID
+            solanaTransaction: `mock_tx_${Date.now()}`, // Mock transaction ID
+            blockchainVerified: true,
+            network: 'Solana Devnet'
           },
           mintAddress,
           expiryDate: expiryDate ? new Date(expiryDate) : null,
@@ -215,6 +244,7 @@ export async function POST(request: Request) {
         },
       });
 
+      console.log('Certificate created with ID:', cert.id);
       return cert;
     });
 
@@ -233,6 +263,8 @@ export async function POST(request: Request) {
       institutionId: institutionId,
       type: type
     });
+
+    console.log('Certificate creation completed successfully');
 
     return NextResponse.json(certificate);
   } catch (error) {

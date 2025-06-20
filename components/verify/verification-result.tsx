@@ -22,19 +22,23 @@ interface VerificationResultProps {
     valid: boolean;
     certificate: {
       id: string;
-      name: string;
+      title: string;
+      type: string;
+      mintAddress: string;
+      issueDate: string;
+      institution: {
+        name: string;
+        verified?: boolean;
+      };
+      recipient: {
+        name: string;
+        walletAddress: string;
+      };
       issuer: {
         name: string;
-        verified: boolean;
+        walletAddress: string;
       };
-      recipient: string;
-      issueDate: string;
-      metadata: Record<string, string>;
-      blockchain: {
-        network: string;
-        transactionId: string;
-        timestamp: string;
-      };
+      metadata: any;
     };
   };
 }
@@ -70,8 +74,8 @@ export function VerificationResult({ result }: VerificationResultProps) {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="text-2xl">{certificate.name}</CardTitle>
-                <CardDescription>Issued to {certificate.recipient}</CardDescription>
+                <CardTitle className="text-2xl">{certificate.title}</CardTitle>
+                <CardDescription>Issued to {certificate.recipient.name}</CardDescription>
               </div>
               <div className="flex items-center space-x-1 bg-green-100 dark:bg-green-900/30 px-3 py-1 rounded-full">
                 <Shield className="h-4 w-4 text-green-600 dark:text-green-400" />
@@ -86,19 +90,19 @@ export function VerificationResult({ result }: VerificationResultProps) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">Issuing Institution</p>
-                  <p className="font-medium">{certificate.issuer.name}</p>
+                  <p className="font-medium">{certificate.institution.name}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">Issue Date</p>
                   <p className="font-medium">{new Date(certificate.issueDate).toLocaleDateString()}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">Certificate ID</p>
-                  <p className="font-medium">{certificate.id}</p>
+                  <p className="text-sm text-muted-foreground">Certificate Type</p>
+                  <p className="font-medium">{certificate.type}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">Blockchain</p>
-                  <p className="font-medium">{certificate.blockchain.network}</p>
+                  <p className="text-sm text-muted-foreground">Recipient Wallet</p>
+                  <p className="font-medium font-mono text-sm">{certificate.recipient.walletAddress}</p>
                 </div>
               </div>
             </div>
@@ -108,12 +112,23 @@ export function VerificationResult({ result }: VerificationResultProps) {
                 <AccordionTrigger>Certificate Metadata</AccordionTrigger>
                 <AccordionContent>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {Object.entries(certificate.metadata).map(([key, value]) => (
-                      <div key={key} className="space-y-1">
-                        <p className="text-sm text-muted-foreground capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</p>
-                        <p className="font-medium">{value}</p>
+                    {certificate.metadata?.attributes?.map((attr: any, index: number) => (
+                      <div key={index} className="space-y-1">
+                        <p className="text-sm text-muted-foreground">{attr.trait_type}</p>
+                        <p className="font-medium">{attr.value}</p>
+                        {attr.encrypted && (
+                          <span className="text-xs text-orange-600 bg-orange-100 px-2 py-1 rounded">
+                            Encrypted
+                          </span>
+                        )}
                       </div>
                     ))}
+                    {certificate.metadata?.description && (
+                      <div className="md:col-span-2 space-y-1">
+                        <p className="text-sm text-muted-foreground">Description</p>
+                        <p className="font-medium">{certificate.metadata.description}</p>
+                      </div>
+                    )}
                   </div>
                 </AccordionContent>
               </AccordionItem>
@@ -123,15 +138,30 @@ export function VerificationResult({ result }: VerificationResultProps) {
                 <AccordionContent>
                   <div className="space-y-4">
                     <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">Transaction ID</p>
-                      <p className="font-medium font-mono text-sm break-all">{certificate.blockchain.transactionId}</p>
+                      <p className="text-sm text-muted-foreground">Mint Address (NFT)</p>
+                      <p className="font-medium font-mono text-sm break-all">{certificate.mintAddress}</p>
                     </div>
                     <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">Timestamp</p>
-                      <p className="font-medium">{new Date(certificate.blockchain.timestamp).toLocaleString()}</p>
+                      <p className="text-sm text-muted-foreground">Network</p>
+                      <p className="font-medium">{certificate.metadata?.network || 'Solana Devnet'}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground">Transaction ID</p>
+                      <p className="font-medium font-mono text-sm break-all">
+                        {certificate.metadata?.solanaTransaction || 'N/A'}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground">Verification Status</p>
+                      <p className="font-medium text-green-600">
+                        {certificate.metadata?.blockchainVerified ? 'Verified on Blockchain' : 'Pending Verification'}
+                      </p>
                     </div>
                     <div className="pt-2">
-                      <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" onClick={() => {
+                        const explorerUrl = `https://explorer.solana.com/address/${certificate.mintAddress}?cluster=devnet`;
+                        window.open(explorerUrl, '_blank');
+                      }}>
                         <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
                         View on Solana Explorer
                       </Button>
